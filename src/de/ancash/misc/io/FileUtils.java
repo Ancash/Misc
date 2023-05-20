@@ -6,9 +6,9 @@ import java.io.InputStream;
 import java.util.HashSet;
 import java.util.Set;
 
-import de.ancash.libs.org.simpleyaml.configuration.ConfigurationSection;
-import de.ancash.libs.org.simpleyaml.configuration.file.YamlFile;
-import de.ancash.libs.org.simpleyaml.exceptions.InvalidConfigurationException;
+import org.simpleyaml.configuration.ConfigurationSection;
+import org.simpleyaml.configuration.file.YamlFile;
+import org.simpleyaml.exceptions.InvalidConfigurationException;
 
 public class FileUtils {
 
