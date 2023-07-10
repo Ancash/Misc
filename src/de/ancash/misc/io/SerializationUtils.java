@@ -37,19 +37,19 @@ import java.util.Set;
  * @since 1.0
  */
 public class SerializationUtils {
-	
+
 	static int i = 12;
-	
+
 	private static final Set<ClassLoader> clazzLoader = new HashSet<>();
 
 	static {
 		clazzLoader.add(ClassLoader.getSystemClassLoader());
 	}
-	
+
 	public static void addClazzLoader(ClassLoader cl) {
 		clazzLoader.add(cl);
 	}
-	
+
 	public static Serializable deserializeWithClassLoaders(byte[] bytes) throws IOException, ClassNotFoundException {
 		ByteArrayInputStream b = new ByteArrayInputStream(bytes);
 		Exception e = null;
