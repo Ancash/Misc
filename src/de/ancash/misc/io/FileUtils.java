@@ -8,10 +8,12 @@ import java.util.Set;
 
 import org.simpleyaml.configuration.ConfigurationSection;
 import org.simpleyaml.configuration.file.YamlFile;
+import org.simpleyaml.configuration.implementation.snakeyaml.SnakeYamlImplementation;
 import org.simpleyaml.exceptions.InvalidConfigurationException;
 
 public class FileUtils {
 
+	@SuppressWarnings("nls")
 	public static void move(YamlFile file, String from, String to) {
 		if (!file.contains(from))
 			return;
@@ -26,6 +28,7 @@ public class FileUtils {
 		System.out.println(String.format("Moved '%s' in '%s' to '%s'", from, file.getFilePath(), to));
 	}
 
+	@SuppressWarnings("nls")
 	public static void moveConfigurationSection(YamlFile file, String from, String to) {
 		if (from.equals(to))
 			return;
@@ -48,11 +51,13 @@ public class FileUtils {
 		setMissingConfigurationSections(original, src, new HashSet<>());
 	}
 
+	@SuppressWarnings("nls")
 	public static void setMissingConfigurationSections(YamlFile original, InputStream src,
 			Set<String> ignoreSectionIfSectionContains) throws IOException, InvalidConfigurationException {
 		File file = new File(System.nanoTime() + ".tmp");
 		try {
-			YamlFile srcYaml = new YamlFile(file);
+			YamlFile srcYaml = new YamlFile(new SnakeYamlImplementation());
+			srcYaml.setConfigurationFile(file);
 			srcYaml.createNewFile();
 			de.ancash.libs.org.apache.commons.io.FileUtils.copyInputStreamToFile(src, srcYaml.getConfigurationFile());
 			setMissingConfigurationSections(original, srcYaml, ignoreSectionIfSectionContains);
@@ -76,6 +81,7 @@ public class FileUtils {
 		src.save();
 	}
 
+	@SuppressWarnings("nls")
 	private static void compute(YamlFile original, Set<String> ignoreSectionIfSectionContains, String key,
 			ConfigurationSection curSection) {
 		if (curSection.isConfigurationSection(key)) {
@@ -112,6 +118,7 @@ public class FileUtils {
 		}
 	}
 
+	@SuppressWarnings("nls")
 	private static void set(YamlFile file, ConfigurationSection section, String key) {
 		String path = "".equals(section.getCurrentPath()) ? key : section.getCurrentPath() + "." + key;
 

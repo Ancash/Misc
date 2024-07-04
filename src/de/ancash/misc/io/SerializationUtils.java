@@ -8,47 +8,118 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.ObjectStreamClass;
 import java.io.Serializable;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * <p>
- * Assists with the serialization process and performs additional functionality
- * based on serialization.
- * </p>
- *
- * <ul>
- * <li>Deep clone using serialization
- * <li>Serialize managing finally and IOException
- * <li>Deserialize managing finally and IOException
- * </ul>
- *
- * <p>
- * This class throws exceptions for invalid {@code null} inputs. Each method
- * documents its behavior in more detail.
- * </p>
- *
- * <p>
- * #ThreadSafe#
- * </p>
- * 
- * @since 1.0
- */
 public class SerializationUtils {
 
-	static int i = 12;
+//	public static void main(String[] args) throws IOException, ClassNotFoundException {
+//
+//		Map<Object, Object> test = new HashMap<Object, Object>();
+//
+//		for (int i = 0; i < 100; i++) {
+//			test.put(i, i);
+//			test.put(i + 1000, new byte[10]);
+//
+//		}
+//
+//		byte[] ser = null;
+//
+//		int i = 100_000;
+//		long now = System.nanoTime();
+//		for (int a = 0; a < i; a++) {
+//			ser = serializeToBytes(test);
+//		}
+//
+//		System.out.println((System.nanoTime() - now) / i + " ns/write old");
+//
+//		now = System.nanoTime();
+//		for (int a = 0; a < i; a++) {
+//			deserializeFromBytes(ser);
+//		}
+//
+//		System.out.println((System.nanoTime() - now) / i + " ns/read old");
+//
+//		now = System.nanoTime();
+//		for (int a = 0; a < i; a++) {
+//			ser = conf.asByteArray(test);
+//		}
+//
+//		System.out.println((System.nanoTime() - now) / i + " ns/write new");
+//
+//		now = System.nanoTime();
+//		for (int a = 0; a < i; a++) {
+//			conf.asObject(ser);
+//		}
+//
+//		System.out.println((System.nanoTime() - now) / i + " ns/read new");
+//
+//	}
 
+//	static FSTConfiguration conf = FSTConfiguration.createDefaultConfiguration();
 	private static final Set<ClassLoader> clazzLoader = new HashSet<>();
 
-	static {
-		clazzLoader.add(ClassLoader.getSystemClassLoader());
+//	static {
+//		clazzLoader.add(ClassLoader.getSystemClassLoader());
+//		try {
+//			Field f = org.nustaq.serialization.FSTConfiguration.class.getDeclaredField("classRegistry");
+//			f.setAccessible(true);
+//			f.set(conf, new FSTClazzNameRegistry(null));
+//			Method m = FSTConfiguration.class.getDeclaredMethod("addDefaultClazzes");
+//			m.setAccessible(true);
+//			m.invoke(conf);
+//		} catch (NoSuchFieldException | SecurityException | IllegalArgumentException | IllegalAccessException
+//				| NoSuchMethodException | InvocationTargetException e1) {
+//			e1.printStackTrace();
+//		}
+//		conf.setLastResortResolver(new LastResortClassResolver() {
+//			@Override
+//			public Class<?> getClass(String clName) {
+//				Class<?> clazz = getClazz(clName);
+//				if(clazz == null)
+//					return Unknown.class;
+//				return clazz;
+//			}
+//		});
+//	}
+
+	private static final ConcurrentHashMap<String, Class<?>> clazzRegistry = new ConcurrentHashMap<String, Class<?>>();
+
+	public static Class<?> getClazz(String clName) {
+		if (clazzRegistry.containsKey(clName))
+			return clazzRegistry.get(clName);
+		for (ClassLoader cl : clazzLoader) {
+			Class<?> clazz;
+			try {
+				clazz = Class.forName(clName, true, cl);
+			} catch (ClassNotFoundException e) {
+				continue;
+			}
+			if (clazz != null) {
+				clazzRegistry.put(clName, clazz);
+				return clazz;
+			}
+		}
+		return null;
 	}
 
 	public static void addClazzLoader(ClassLoader cl) {
 		clazzLoader.add(cl);
 	}
+
+//	public static Object deserializeFST(byte[] bytes) {
+//		return conf.asObject(bytes);
+//	}
+//
+//	public static byte[] serializeFST(Object o) {
+//		return conf.asByteArray(o);
+//	}
 
 	public static Serializable deserializeWithClassLoaders(byte[] bytes) throws IOException, ClassNotFoundException {
 		ByteArrayInputStream b = new ByteArrayInputStream(bytes);
@@ -65,22 +136,6 @@ public class SerializationUtils {
 		throw new ClassNotFoundException(e.getLocalizedMessage(), e);
 	}
 
-	/**
-	 * <p>
-	 * Custom specialization of the standard JDK {@link java.io.ObjectInputStream}
-	 * that uses a custom {@code ClassLoader} to resolve a class. If the specified
-	 * {@code ClassLoader} is not able to resolve the class, the context classloader
-	 * of the current thread will be used. This way, the standard deserialization
-	 * work also in web-application containers and application servers, no matter in
-	 * which of the {@code ClassLoader} the particular class that encapsulates
-	 * serialization/deserialization lives.
-	 * </p>
-	 *
-	 * <p>
-	 * For more in-depth information about the problem for which this class here is
-	 * a workaround, see the JIRA issue LANG-626.
-	 * </p>
-	 */
 	@SuppressWarnings("nls")
 	public static class ClassLoaderAwareObjectInputStream extends ObjectInputStream {
 		private static final Map<String, Class<?>> primitiveTypes = new HashMap<>();
@@ -107,8 +162,7 @@ public class SerializationUtils {
 		 * @throws IOException if an I/O error occurs while reading stream header.
 		 * @see java.io.ObjectInputStream
 		 */
-		public ClassLoaderAwareObjectInputStream(final InputStream in, final ClassLoader classLoader)
-				throws IOException {
+		public ClassLoaderAwareObjectInputStream(final InputStream in, final ClassLoader classLoader) throws IOException {
 			super(in);
 			this.classLoader = classLoader;
 		}
@@ -127,6 +181,9 @@ public class SerializationUtils {
 		protected Class<?> resolveClass(final ObjectStreamClass desc) throws IOException, ClassNotFoundException {
 			final String name = desc.getName();
 			try {
+				Class<?> clazz = getClazz(name);
+				if (clazz != null)
+					return clazz;
 				return Class.forName(name, true, classLoader);
 			} catch (final ClassNotFoundException ex) {
 				try {
@@ -159,22 +216,4 @@ public class SerializationUtils {
 			}
 		}
 	}
-
-	/**
-	 * <p>
-	 * SerializationUtils instances should NOT be constructed in standard
-	 * programming. Instead, the class should be used as
-	 * {@code SerializationUtils.clone(object)}.
-	 * </p>
-	 *
-	 * <p>
-	 * This constructor is public to permit tools that require a JavaBean instance
-	 * to operate.
-	 * </p>
-	 * 
-	 * @since 2.0
-	 */
-	public SerializationUtils() {
-	}
-
 }
