@@ -5,7 +5,6 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 
-@SuppressWarnings("nls")
 public class CustomReentrantReadWriteLock extends ReentrantReadWriteLock {
 
 	private static final long serialVersionUID = 6029935387954940648L;
@@ -16,18 +15,6 @@ public class CustomReentrantReadWriteLock extends ReentrantReadWriteLock {
 
 	public CustomReentrantReadWriteLock(boolean fair) {
 		super(fair);
-	}
-
-	@Deprecated
-	@Override
-	public ReadLock readLock() {
-		throw new UnsupportedOperationException();
-	}
-
-	@Deprecated
-	@Override
-	public WriteLock writeLock() {
-		throw new UnsupportedOperationException();
 	}
 
 	public <T> T readLock(Supplier<T> r) {
@@ -41,10 +28,11 @@ public class CustomReentrantReadWriteLock extends ReentrantReadWriteLock {
 
 	public <T> T writeLock(Supplier<T> r) {
 		try {
+
 			if (!super.writeLock().tryLock(10, TimeUnit.SECONDS))
 				throw new IllegalStateException(
 						"could not acquire write lock within timeout limit (probably also holds read lock)");
-
+			
 			try {
 				return r.get();
 			} finally {

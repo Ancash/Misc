@@ -1,11 +1,15 @@
 package de.ancash.misc.yaml;
 
+import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.lang.reflect.WildcardType;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -16,10 +20,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Map.Entry;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.simpleyaml.configuration.file.YamlFile;
 import org.simpleyaml.configuration.serialization.ConfigurationSerializable;
 import org.simpleyaml.configuration.serialization.ConfigurationSerialization;
 
@@ -28,6 +34,7 @@ public class YamlAnnotationProcessor {
 
 	private static final Map<Class<?>, Function<Object, Object>> commonSerializer = new HashMap<Class<?>, Function<Object, Object>>();
 	private static final Map<Class<?>, BiFunction<Class<?>, Object, Object>> commonDeserializer = new HashMap<Class<?>, BiFunction<Class<?>, Object, Object>>();
+	private static final Map<Class<?>, Method> deserializeMethods = new HashMap<>();
 
 	static {
 		commonSerializer.put(Enum.class, o -> ((Enum) o).name());
@@ -36,19 +43,36 @@ public class YamlAnnotationProcessor {
 		commonDeserializer.put(UUID.class, (c, u) -> UUID.fromString((String) u));
 	}
 
+	private static Object deserialize(Class<?> clazz, Map<String, Object> val)
+			throws NoSuchMethodException, SecurityException, IllegalAccessException, IllegalArgumentException, InvocationTargetException {
+		Method m;
+		synchronized (deserializeMethods) {
+			if (!deserializeMethods.containsKey(clazz))
+
+				deserializeMethods.put(clazz, clazz.getDeclaredMethod("deserialize", Map.class));
+			m = deserializeMethods.get(clazz);
+		}
+		return m.invoke(null, val);
+	}
+
 //	public static void main(String[] args) throws IOException {
 //		Test t = new Test();
 //		t.test.add(A.B);
 //		t.test.add(A.C);
+//		for (int i = 0; i < 3; i++) {
+//			t.nest.add(new Nest());
+//		}
 //		YamlFile y = new YamlFile();
-//		y.set("a", t.serialize());
+//		for(Entry<String, Object> e : t.serialize().entrySet()) {
+//			y.set(e.getKey(), e.getValue());
+//		}
 //		System.out.println(y.saveToString());
-//		Test d = Test.deserialize(t.serialize());
-//		System.out.println(d.serialize());
-//		y.set("b", d.serialize());
-//		System.out.println(y.saveToString());
-//		System.out.println(d.test.stream().findAny().get().getClass().getCanonicalName());
-//		System.out.println(d.lol);
+//		y.setConfigurationFile(new File("test"));
+//		y.createNewFile();
+//		y.save();
+//		
+//		System.out.println(Files.readAllLines(y.getConfigurationFile().toPath()));
+//		y.deleteFile();
 //	}
 //
 //	static class Test implements ConfigurationSerializable {
@@ -57,6 +81,8 @@ public class YamlAnnotationProcessor {
 //		Set<A> test = new HashSet<A>();
 //		@YamlSerializable(key = "arr")
 //		int[] lol = new int[2];
+//		@YamlSerializable(key = "nest")
+//		final List<Nest> nest = new ArrayList<YamlAnnotationProcessor.Nest>();
 //
 //		@Override
 //		public Map<String, Object> serialize() {
@@ -68,8 +94,33 @@ public class YamlAnnotationProcessor {
 //		}
 //	}
 //
-//	
-//	public enum A{
+//	static class Nest implements ConfigurationSerializable {
+//		@YamlSerializable(key = "period")
+//		private long periodMinutes= 60;
+//		@YamlSerializable(key = "last")
+//		private long lastUTC = System.currentTimeMillis();
+//		@YamlSerializable(key = "min")
+//		private double min;
+//		@YamlSerializable(key = "max")
+//		private double max;
+//		@YamlSerializable(key = "type")
+//		private A type = A.B;
+//		@YamlSerializable(key = "cuid")
+//		private UUID cuid;
+//		@YamlSerializable(key = "amount")
+//		private int amount;
+//
+//		@Override
+//		public Map<String, Object> serialize() {
+//			return YamlAnnotationProcessor.serialize(this);
+//		}
+//
+//		public static Nest deserialize(Map<String, Object> m) {
+//			return loadInto(m, new Nest());
+//		}
+//	}
+//
+//	public enum A {
 //		B, C;
 //	}
 
@@ -101,9 +152,7 @@ public class YamlAnnotationProcessor {
 
 	private static Object serializeObject(Object val) {
 		if (val instanceof ConfigurationSerializable) {
-			Map<String, Object> v = ((ConfigurationSerializable) val).serialize();
-			v.put("==", val.getClass().getCanonicalName());
-			return v;
+			return ((ConfigurationSerializable) val).serialize();
 		} else if (val.getClass().isEnum())
 			return commonSerializer.get(Enum.class).apply(val);
 		else if (commonSerializer.containsKey(val.getClass()))
@@ -118,7 +167,6 @@ public class YamlAnnotationProcessor {
 			}
 			val = elements;
 		}
-
 		return val;
 	}
 
@@ -173,10 +221,12 @@ public class YamlAnnotationProcessor {
 
 	private static Object deserializeObject(Class<?> fieldType, Class<?>[] generics, final Object val) throws IllegalArgumentException,
 			IllegalAccessException, InstantiationException, InvocationTargetException, NoSuchMethodException, SecurityException {
+		
 		if (val instanceof Map) {
 			Map<?, Object> m = (Map<Object, Object>) val;
-			if (m.containsKey("=="))
-				return ConfigurationSerialization.deserializeObject((Map<String, Object>) m);
+			if (ConfigurationSerializable.class.isAssignableFrom(fieldType))
+				return deserialize(fieldType, (Map<String, Object>) m);
+			
 		} else if (fieldType.isEnum()) {
 			return commonDeserializer.get(Enum.class).apply(fieldType, val);
 		} else if (commonDeserializer.containsKey(fieldType)) {
@@ -207,7 +257,7 @@ public class YamlAnnotationProcessor {
 			}
 			return arr;
 		}
-
+		
 		return val;
 	}
 }
